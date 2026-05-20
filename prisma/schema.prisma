@@ -1,0 +1,348 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum Role {
+  USER
+  CA
+  ADMIN
+}
+
+enum SubscriptionTier {
+  SILVER
+  GOLD
+  PLATINUM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  PENDING
+}
+
+enum DocumentType {
+  PAN
+  AADHAAR
+  ITR
+  GST
+  BANK_STATEMENT
+  INCOME_STATEMENT
+  PROPERTY_DOC
+  LOAN_DOC
+  OTHER
+}
+
+enum FilingStatus {
+  DRAFT
+  SUBMITTED
+  VERIFIED
+  COMPLETED
+  REJECTED
+}
+
+enum AdvisoryStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum AuditLogAction {
+  LOGIN
+  LOGOUT
+  DOCUMENT_UPLOAD
+  DOCUMENT_DOWNLOAD
+  DOCUMENT_DELETE
+  FILING_CREATE
+  FILING_SUBMIT
+  SUBSCRIPTION_CREATE
+  SUBSCRIPTION_UPDATE
+  SUBSCRIPTION_CANCEL
+  PROFILE_UPDATE
+  MFA_ENABLE
+  MFA_DISABLE
+  DATA_PURGE_REQUEST
+}
+
+enum UserType {
+  SALARIED
+  BUSINESS
+}
+
+enum ExpenseCategory {
+  TRAVEL_BUSINESS
+  CONVEYANCE
+  BUSINESS_STAY
+  CLIENT_MEETINGS
+  TELECOM
+  RENTAL_EXPENSE
+  OFFICE_SUPPLIES
+  CHILDCARE
+  PERSONAL_TRAVEL
+  FOOD_PERSONAL
+  TAXI_PERSONAL
+  MOBILE_PERSONAL
+}
+
+enum ExpenseStatus {
+  APPROVED
+  PENDING
+  FLAGGED
+  REJECTED
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  name          String
+  phone         String?
+  pan           String?   @unique
+  aadhaarMasked String?
+  userType      UserType  @default(SALARIED)
+  role          Role      @default(USER)
+  mfaEnabled    Boolean   @default(false)
+  mfaSecret     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastLoginAt   DateTime?
+
+  subscription  Subscription?
+  documents     Document[]
+  filings       Filing[]
+  incomeRecords IncomeRecord[]
+  lossRecords   LossRecord[]
+  taxExemptions TaxExemption[]
+  advisoryCalls AdvisoryCall[]
+  auditLogs     AuditLog[]
+  caClients     ClientAssignment[] @relation("AssignedCA")
+  assignedCA    ClientAssignment[] @relation("AssignedUser")
+
+  @@index([email])
+  @@index([role])
+  @@index([userType])
+}
+
+model Subscription {
+  id              String           @id @default(cuid())
+  userId          String           @unique
+  tier            SubscriptionTier
+  status          SubscriptionStatus @default(PENDING)
+  startDate       DateTime
+  endDate         DateTime
+  autoRenew       Boolean          @default(true)
+  amount          Float
+  razorpaySubId   String?
+  commitmentYears Int              @default(1)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+}
+
+model Document {
+  id          String       @id @default(cuid())
+  userId      String
+  type        DocumentType
+  fileName    String
+  encryptedData String
+  iv          String
+  authTag     String
+  fileSize    Int
+  uploadedBy  String
+  uploadedAt  DateTime     @default(now())
+  deletedAt   DateTime?
+  tags        String?
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([type])
+  @@index([deletedAt])
+}
+
+model Filing {
+  id            String       @id @default(cuid())
+  userId        String
+  type          String
+  financialYear String
+  status        FilingStatus @default(DRAFT)
+  data          String
+  filedAt       DateTime?
+  acknowledgment String?
+  notes         String?
+  caId          String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([financialYear])
+}
+
+model AdvisoryCall {
+  id          String         @id @default(cuid())
+  userId      String
+  caId        String?
+  scheduledAt DateTime
+  duration    Int            @default(30)
+  status      AdvisoryStatus @default(SCHEDULED)
+  notes       String?
+  recordingUrl String?
+  createdAt   DateTime       @default(now())
+
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([scheduledAt])
+}
+
+model ClientAssignment {
+  id        String   @id @default(cuid())
+  caId      String
+  userId    String
+  assignedAt DateTime @default(now())
+  isActive  Boolean  @default(true)
+
+  ca        User     @relation("AssignedCA", fields: [caId], references: [id], onDelete: Cascade)
+  user      User     @relation("AssignedUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([caId, userId])
+  @@index([caId])
+  @@index([userId])
+}
+
+model AuditLog {
+  id        String         @id @default(cuid())
+  userId    String
+  action    AuditLogAction
+  entity    String?
+  entityId  String?
+  ipAddress String?
+  userAgent String?
+  details   String?
+  createdAt DateTime       @default(now())
+
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+enum IncomeType {
+  STOCKS_CAPITAL_GAINS
+  STOCKS_DIVIDENDS
+  FIXED_DEPOSIT
+  RENTAL_INCOME
+  MUTUAL_FUNDS
+  BONDS_DEBENTURES
+  SAVINGS_INTEREST
+  OTHER_INVESTMENT
+}
+
+enum IncomeStatus {
+  REPORTED
+  PENDING_REVIEW
+  FILED
+}
+
+enum LossType {
+  STCL
+  LTCL
+  BUSINESS_NON_SPECULATIVE
+  BUSINESS_SPECULATIVE
+  HOUSE_PROPERTY
+}
+
+enum LossStatus {
+  UNADJUSTED
+  PARTIALLY_ADJUSTED
+  FULLY_ADJUSTED
+  CARRIED_FORWARD
+  EXPIRED
+}
+
+model LossRecord {
+  id                  String       @id @default(cuid())
+  userId              String
+  type                LossType
+  amount              Float
+  financialYear       String
+  description         String?
+  assetType           String?
+  purchaseDate        DateTime?
+  saleDate            DateTime?
+  purchasePrice       Float?
+  salePrice           Float?
+  carriedForwardFrom  String?
+  carryForwardYear    Int          @default(0)
+  remainingCarryYears Int          @default(8)
+  adjustedAmount      Float        @default(0)
+  status              LossStatus   @default(UNADJUSTED)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  user                User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([type])
+  @@index([financialYear])
+  @@index([status])
+}
+
+model IncomeRecord {
+  id            String       @id @default(cuid())
+  userId        String
+  type          IncomeType
+  amount        Float
+  financialYear String
+  description   String?
+  taxDeducted   Float        @default(0)
+  hasForm26AS   Boolean      @default(false)
+  status        IncomeStatus @default(PENDING_REVIEW)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([type])
+  @@index([financialYear])
+}
+
+model TaxExemption {
+  id            String        @id @default(cuid())
+  userId        String
+  category      ExpenseCategory
+  amount        Float
+  date          DateTime
+  description   String?
+  purpose       String?
+  businessUsePercent Int?     @default(100)
+  status        ExpenseStatus @default(PENDING)
+  receiptUrl    String?
+  flagged       Boolean       @default(false)
+  flagReason    String?
+  financialYear String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([category])
+  @@index([financialYear])
+  @@index([status])
+}
