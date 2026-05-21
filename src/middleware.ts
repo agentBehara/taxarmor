@@ -10,6 +10,11 @@ export async function middleware(request: any) {
   const url = request.nextUrl.clone()
   const pathname = url.pathname
 
+  // DEMO MODE: Bypass auth entirely
+  if (process.env.DEMO_MODE === "true") {
+    return NextResponse.next()
+  }
+
   const token = await getToken({
     req: request,
     secret: process.env.NEXTAUTH_SECRET,
